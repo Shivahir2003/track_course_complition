@@ -1,26 +1,40 @@
+from completion.models import BlockCompletion
 from django.contrib.auth.models import User
-from django.shortcuts import render, redirect
+from django.shortcuts import render
+from opaque_keys.edx.keys import CourseKey, UsageKey
 
 from common.djangoapps.student.models import CourseEnrollment
-from lms.djangoapps.course_blocks.api import get_course_blocks
-from lms.djangoapps.grades.api import CourseGradeFactory
-from lms.djangoapps.grades.api import override_subsection_grade
-from lms.djangoapps.grades.constants import GradeOverrideFeatureEnum
+from xmodule.modulestore.django import modulestore
+
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-
-
-from opaque_keys.edx.keys import CourseKey, UsageKey
-from xmodule.modulestore.django import modulestore
-from completion.models import BlockCompletion
+from lms.djangoapps.course_blocks.api import get_course_blocks
+from lms.djangoapps.courseware.block_render import get_block
+from lms.djangoapps.courseware.model_data import FieldDataCache
+from lms.djangoapps.grades.api import CourseGradeFactory
 
 
 @api_view(["GET", "POST"])
 def get_course_details(request):
-    if request.method == "POST":
+    """
+        get user details, course details and course outline, course grade
         
+        Arguments:
+            request (HttpRequest)
+        
+        Required Parameters:
+            course_id,user_email
+        
+        Returns:
+            In Get : render add track course completion page
+            In Post : get user email and course id and return course details, 
+                user details and course outline, course grade
+    """
+
+    if request.method == "POST":
+
         # get course id and user email
         course_id = request.POST.get("course_id")
         user_email = request.POST.get("user_email")
@@ -51,7 +65,7 @@ def get_course_details(request):
             allow_start_dates_in_future=True,
             include_completion=True,
         )
-        
+
         # get course outline data
         for section in course.get_children():
             sub_section_count = len(section.get_children())
@@ -123,11 +137,16 @@ def get_course_details(request):
             "first_name": student.first_name,
             "last_name": student.last_name,
         }
-        course_details = {
+        if course.start and course.end:
+            course_details = {
+                "name": course.display_name,
+                "start": course.start.strftime("%d-%m-%Y %I:%M %p"),
+                "end": course.end.strftime("%d-%m-%Y %I:%M %p"),
+            }
+        else:
+            course_details = {
             "name": course.display_name,
-            "start": course.start.strftime("%d-%m-%Y %I:%M %p"),
-            "end": course.end.strftime("%d-%m-%Y %I:%M %p"),
-        }
+            }
         data = {
             "is_enrolled": is_enrolled,
             "user_details": user_details,
@@ -141,50 +160,121 @@ def get_course_details(request):
 
 @api_view(["POST"])
 def complete_block(request):
-
+    """
+        mark course block as completed
+        
+        Arguments:
+            request (HttpRequest)
+        
+        Required Parameters:
+            course_id,user_email,block_id
+        
+        Returns:
+            In Post : get user email, block_id, course id and mark block as completed
+    """
+    # get block_id, course_id and user email 
     course_id = request.POST.get("course_id")
     user_email = request.POST.get("user_email")
     block_id = request.POST.get("block_id")
+    message = {}
     try:
         user = User.objects.get(email=user_email)
     except User.DoesNotExist:
         user = None
 
+    # get block to mark complete 
     block_usage_key = UsageKey.from_string(block_id)
+    course_key = CourseKey.from_string(course_id)
+    course = modulestore().get_course(course_key, depth=3)
+    field_data_cache = FieldDataCache.cache_for_block_descendents(course.id,user,course,depth=2)
+    block = get_block(user,request,block_usage_key,field_data_cache,)
 
     if BlockCompletion.objects.filter(context_key=course_id, user=user, block_key=block_usage_key):
         message = {"success": "block is already completed"}
-    else:
-        try:
-            BlockCompletion.objects.submit_completion(user=user, block_key=block_usage_key, completion=1.0)
-            message = {"success": "block is completed successfully"}
-        except BlockCompletion:
-            message = {"error": "something went wrong try again"}
-    return Response(message)
 
+    # mark block as complete
+    if block_usage_key.block_type == 'chapter':
+        for subsection in block.get_children():
+            for unit in subsection.get_children():
+                for problem in unit.get_children():
+                    try:
+                        BlockCompletion.objects.submit_completion(
+                            user=user, 
+                            block_key=problem.usage_key,
+                            completion=1.0
+                        )
+                        message = {"success": "block is completed successfully"}
+                    except BlockCompletion:
+                        message = {"error": "something went wrong try again"}
+    elif block_usage_key.block_type == 'sequential':
+        for unit in block.get_children():
+            for problem in unit.get_children():
+                try:
+                    BlockCompletion.objects.submit_completion(
+                        user=user, 
+                        block_key=problem.usage_key,
+                        completion=1.0
+                    )
+                    message = {"success": "block is completed successfully"}
+                except BlockCompletion:
+                    message = {"error": "something went wrong try again"}
+    elif block_usage_key.block_type == 'vertical':
+        for problem in block.get_children():
+            try:
+                BlockCompletion.objects.submit_completion(
+                    user=user, 
+                    block_key=problem.usage_key,
+                    completion=1.0
+                )
+                message = {"success": "block is completed successfully"}
+            except BlockCompletion:
+                message = {"error": "something went wrong try again"}
+    else :
+        message = {"error": "something went wrong try again"}
+
+
+    return Response(message)
 
 @api_view(["POST"])
 def set_grade(request):
+    """
+        set grade in for subsection
+        
+        Arguments:
+            request (HttpRequest)
+        
+        Required Parameters:
+            course_id,user_email,subsection_id, grade
+        
+        Returns:
+            In Post : get user email, block_id, course id, grade and update grade
+    """
+    # get grade, user email, course id subsection id
     user_email = request.POST.get('user_email')
     course_id = request.POST.get('course_id')
     grade = request.POST.get('grade')
     subsection_id = request.POST.get('section_id')
+    max_value = 1
 
+    # get course, user, and subsection block
     course_key = CourseKey.from_string(course_id)
-    block_usage_key = UsageKey.from_string(subsection_id)
+    course = modulestore().get_course(course_key, depth=3)
     user = User.objects.get(email=user_email)
-    feature=GradeOverrideFeatureEnum.proctoring
+    field_data_cache = FieldDataCache.cache_for_block_descendents(course.id,user,course,depth=2)
+    subsetion_usage_key = UsageKey.from_string(subsection_id)
+    block = get_block(user,request,subsetion_usage_key,field_data_cache,)
 
-    override_subsection_grade(
-        user.id,
-        course_key,
-        block_usage_key,
-        earned_all=0.0,
-        earned_graded=grade,
-        feature=feature,
-        overrider=None,
-        comment=None,
-    )
+    grade_dict = {'value': grade, 'max_value': max_value, 'user_id': user.id}
+
+    # set grade for given subsection
+    for unit in block.get_children():
+        if int(grade) != 0:
+            score = (len(unit.get_children())/int(grade))
+            grade_dict = {'value': score, 'max_value': max_value, 'user_id': user.id}
+
+        for problem in unit.get_children():
+            problem.runtime.publish(problem, 'grade', grade_dict)
+
     message = {"success": "grade reseted succesfully"}
 
     return Response(message)

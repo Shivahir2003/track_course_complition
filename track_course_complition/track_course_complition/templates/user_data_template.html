@@ -28,6 +28,7 @@
                   <input type="text" class="form-control" id="courseIdInput">
                 </div>
                 <button type="submit" class="btn btn-primary">Submit</button>
+                <button type="button" id="random-data" class="btn btn-info">random data</button>
               </form>
         </div>
 
@@ -114,6 +115,10 @@
         $("#error_message").addClass("hide")
         $("#success_message").addClass("hide")
 
+        $("#random-data").on('click', function () {
+            $('#userEmailInput').val('edx@example.com')
+            $('#courseIdInput').val('course-v1:test_grade+TS110+2042_SR')
+        })
 
         // showing user details in table
         function show_user_details_table(data){
@@ -130,11 +135,11 @@
                         </tr>
                         <tr>
                             <th>first name</th>
-                            <td>`+data.first_name +`</td>
+                            <td>`+(data.first_name ? data.first_name : '' ) +`</td>
                         </tr>
                         <tr>
                             <th>last name</th>
-                            <td>`+data.last_name +`</td>
+                            <td>`+(data.last_name ? data.last_name : '') +`</td>
                         </tr>
                        `)
 
