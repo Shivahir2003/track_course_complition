@@ -5,10 +5,8 @@ from opaque_keys.edx.keys import CourseKey, UsageKey
 
 from common.djangoapps.student.models import CourseEnrollment
 from xmodule.modulestore.django import modulestore
-from xmodule.modulestore.exceptions import ItemNotFoundError
 
 from rest_framework import status
-from rest_framework.decorators import api_view
 from rest_framework.views import APIView
 from rest_framework.response import Response
 
@@ -18,8 +16,7 @@ from lms.djangoapps.courseware.model_data import FieldDataCache
 from lms.djangoapps.grades.api import CourseGradeFactory
 
 
-@api_view(["GET", "POST"])
-def get_course_details(request):
+class GetCourseDetails(APIView):
     """
         get user details, course details and course outline, course grade
         
@@ -35,7 +32,10 @@ def get_course_details(request):
                 user details and course outline, course grade
     """
 
-    if request.method == "POST":
+    def get(self, request):
+        return render(request, "user_data_template.html")
+
+    def post(self,request):
 
         # get course id and user email
         course_id = request.POST.get("course_id")
@@ -179,11 +179,9 @@ def get_course_details(request):
                 "course_grades": total_grades_list,
             }
         return Response(data,status=status.HTTP_200_OK)
-    return render(request, "user_data_template.html")
 
 
-@api_view(["POST"])
-def complete_block(request):
+class CompleteCourseBlock(APIView):
     """
         mark course block as completed
         
@@ -196,36 +194,50 @@ def complete_block(request):
         Returns:
             In Post : get user email, block_id, course id and mark block as completed
     """
-    # get block_id, course_id and user email 
-    course_id = request.POST.get("course_id")
-    user_email = request.POST.get("user_email")
-    block_id = request.POST.get("block_id")
-    message = {}
-    try:
-        user = User.objects.get(email=user_email)
-    except User.DoesNotExist:
-        return Response(
-                {"error": "user not found"},
-                status=status.HTTP_404_NOT_FOUND
-        )
 
-    # get block to mark complete 
-    block_usage_key = UsageKey.from_string(block_id)
-    course_key = CourseKey.from_string(course_id)
-    course = modulestore().get_course(course_key, depth=3)
-    field_data_cache = FieldDataCache.cache_for_block_descendents(course.id,user,course,depth=2)
-    block = get_block(user,request,block_usage_key,field_data_cache,)
+    def post(self,request):
+        # get block_id, course_id and user email 
+        course_id = request.POST.get("course_id")
+        user_email = request.POST.get("user_email")
+        block_id = request.POST.get("block_id")
+        message = {}
+        try:
+            user = User.objects.get(email=user_email)
+        except User.DoesNotExist:
+            return Response(
+                    {"error": "user not found"},
+                    status=status.HTTP_404_NOT_FOUND
+            )
 
-    if BlockCompletion.objects.filter(context_key=course_id, user=user, block_key=block_usage_key):
-        return Response(
-                {"success": "block is already completed"},
-                status=status.HTTP_200_OK
-        )
+        # get block to mark complete 
+        block_usage_key = UsageKey.from_string(block_id)
+        course_key = CourseKey.from_string(course_id)
+        course = modulestore().get_course(course_key, depth=3)
+        field_data_cache = FieldDataCache.cache_for_block_descendents(course.id,user,course,depth=2)
+        block = get_block(user,request,block_usage_key,field_data_cache,)
 
-    # mark block as complete
-    if block_usage_key.block_type == 'chapter':
-        for subsection in block.get_children():
-            for unit in subsection.get_children():
+        if BlockCompletion.objects.filter(context_key=course_id, user=user, block_key=block_usage_key):
+            return Response(
+                    {"success": "block is already completed"},
+                    status=status.HTTP_200_OK
+            )
+
+        # mark block as complete
+        if block_usage_key.block_type == 'chapter':
+            for subsection in block.get_children():
+                for unit in subsection.get_children():
+                    for problem in unit.get_children():
+                        BlockCompletion.objects.submit_completion(
+                            user=user, 
+                            block_key=problem.usage_key,
+                            completion=1.0
+                        )
+                        return Response(
+                            {"success": "block is completed successfully"},
+                            status=status.HTTP_200_OK
+                        )
+        elif block_usage_key.block_type == 'sequential':
+            for unit in block.get_children():
                 for problem in unit.get_children():
                     BlockCompletion.objects.submit_completion(
                         user=user, 
@@ -236,9 +248,8 @@ def complete_block(request):
                         {"success": "block is completed successfully"},
                         status=status.HTTP_200_OK
                     )
-    elif block_usage_key.block_type == 'sequential':
-        for unit in block.get_children():
-            for problem in unit.get_children():
+        elif block_usage_key.block_type == 'vertical':
+            for problem in block.get_children():
                 BlockCompletion.objects.submit_completion(
                     user=user, 
                     block_key=problem.usage_key,
@@ -248,25 +259,14 @@ def complete_block(request):
                     {"success": "block is completed successfully"},
                     status=status.HTTP_200_OK
                 )
-    elif block_usage_key.block_type == 'vertical':
-        for problem in block.get_children():
-            BlockCompletion.objects.submit_completion(
-                user=user, 
-                block_key=problem.usage_key,
-                completion=1.0
-            )
+        else :
             return Response(
-                {"success": "block is completed successfully"},
-                status=status.HTTP_200_OK
+                {"error": "something went wrong try again"},
+                status=status.HTTP_400_BAD_REQUEST
             )
-    else :
-        return Response(
-            {"error": "something went wrong try again"},
-            status=status.HTTP_400_BAD_REQUEST
-        )
 
-@api_view(["POST"])
-def set_grade(request):
+
+class SetSubsectionGrade(APIView):
     """
         set grade in for subsection
         
@@ -279,45 +279,45 @@ def set_grade(request):
         Returns:
             In Post : get user email, block_id, course id, grade and update grade
     """
-    # get grade, user email, course id subsection id
-    user_email = request.POST.get('user_email')
-    course_id = request.POST.get('course_id')
-    grade = request.POST.get('grade')
-    subsection_id = request.POST.get('section_id')
-    max_value = 1
-    update_subsection_grade = False
+    def post(self,request):
+        # get grade, user email, course id subsection id
+        user_email = request.POST.get('user_email')
+        course_id = request.POST.get('course_id')
+        grade = request.POST.get('grade')
+        subsection_id = request.POST.get('section_id')
+        max_value = 1
+        update_subsection_grade = False
 
-    # get course, user, and subsection block
-    course_key = CourseKey.from_string(course_id)
-    course = modulestore().get_course(course_key, depth=3)
-    user = User.objects.get(email=user_email)
-    field_data_cache = FieldDataCache.cache_for_block_descendents(course.id,user,course,depth=2)
-    subsetion_usage_key = UsageKey.from_string(subsection_id)
-    block = get_block(user,request,subsetion_usage_key,field_data_cache,)
+        # get course, user, and subsection block
+        course_key = CourseKey.from_string(course_id)
+        course = modulestore().get_course(course_key, depth=3)
+        user = User.objects.get(email=user_email)
+        field_data_cache = FieldDataCache.cache_for_block_descendents(course.id,user,course,depth=2)
+        subsetion_usage_key = UsageKey.from_string(subsection_id)
+        block = get_block(user,request,subsetion_usage_key,field_data_cache,)
 
-    grade_dict = {'value': grade, 'max_value': max_value, 'user_id': user.id}
+        grade_dict = {'value': grade, 'max_value': max_value, 'user_id': user.id}
 
-    # set grade for given subsection
-    for unit in block.get_children():
-        if int(grade) != 0:
-            score = (len(unit.get_children())/int(grade))
-            grade_dict = {'value': score, 'max_value': max_value, 'user_id': user.id}
-            update_subsection_grade =True
+        # set grade for given subsection
+        for unit in block.get_children():
+            if int(grade) != 0:
+                score = (len(unit.get_children())/int(grade))
+                grade_dict = {'value': score, 'max_value': max_value, 'user_id': user.id}
+                update_subsection_grade =True
 
-        for problem in unit.get_children():
-            problem.runtime.publish(problem, 'grade', grade_dict)
+            for problem in unit.get_children():
+                problem.runtime.publish(problem, 'grade', grade_dict)
 
-    if update_subsection_grade:
-        message = {"success": "grade updated succesfully"}
-    elif not update_subsection_grade:
-        message = {"success": "grade reseted succesfully"}
-    else:
+        if update_subsection_grade:
+            message = {"success": "grade updated succesfully"}
+        elif not update_subsection_grade:
+            message = {"success": "grade reseted succesfully"}
+        else:
+            return Response(
+                {"error": "something went wrong "},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         return Response(
-            {"error": "something went wrong "},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-    return Response(
-            message,
-            status=status.HTTP_200_OK
-        )
-    
+                message,
+                status=status.HTTP_200_OK
+            )
