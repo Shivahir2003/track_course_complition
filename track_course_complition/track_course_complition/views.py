@@ -7,7 +7,7 @@ from common.djangoapps.student.models import CourseEnrollment
 from xmodule.modulestore.django import modulestore
 
 from rest_framework import status
-from rest_framework.decorators import api_view
+from rest_framework.views import APIView
 from rest_framework.response import Response
 
 from lms.djangoapps.course_blocks.api import get_course_blocks
@@ -16,8 +16,7 @@ from lms.djangoapps.courseware.model_data import FieldDataCache
 from lms.djangoapps.grades.api import CourseGradeFactory
 
 
-@api_view(["GET", "POST"])
-def get_course_details(request):
+class GetCourseDetails(APIView):
     """
         get user details, course details and course outline, course grade
         
@@ -33,7 +32,10 @@ def get_course_details(request):
                 user details and course outline, course grade
     """
 
-    if request.method == "POST":
+    def get(self, request):
+        return render(request, "user_data_template.html")
+
+    def post(self,request):
 
         # get course id and user email
         course_id = request.POST.get("course_id")
@@ -43,11 +45,24 @@ def get_course_details(request):
         try:
             student = User.objects.get(email=user_email)
         except User.DoesNotExist:
-            student = None
-
+            return Response(
+                {"error": "user not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
         # get course from modulestore and check enrollment
-        course_key = CourseKey.from_string(course_id)
+        try:
+            course_key = CourseKey.from_string(course_id)
+        except Exception:
+            return Response(
+                {"error": "invalid course id"},
+                status=status.HTTP_404_NOT_FOUND
+            )
         course = modulestore().get_course(course_key, depth=3)
+        if course is None:
+            return Response(
+                {"error": "course not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
         course_usage_key = modulestore().make_course_usage_key(course_key)
         is_enrolled = CourseEnrollment.is_enrolled(student, course.id)
 
@@ -147,19 +162,26 @@ def get_course_details(request):
             course_details = {
             "name": course.display_name,
             }
-        data = {
-            "is_enrolled": is_enrolled,
-            "user_details": user_details,
-            "course_details": course_details,
-            "course_outline": course_outline,
-            "course_grades": total_grades_list,
-        }
-        return Response(data, status=status.HTTP_200_OK)
-    return render(request, "user_data_template.html")
+        if not is_enrolled:
+            data = {
+                "error": "user is not enrolled in this course",
+                "is_enrolled": is_enrolled,
+                "user_details": user_details,
+                "course_details": course_details
+            }
+        else:
+            data = {
+                "success":"data fetched successfully",
+                "is_enrolled": is_enrolled,
+                "user_details": user_details,
+                "course_details": course_details,
+                "course_outline": course_outline,
+                "course_grades": total_grades_list,
+            }
+        return Response(data,status=status.HTTP_200_OK)
 
 
-@api_view(["POST"])
-def complete_block(request):
+class CompleteCourseBlock(APIView):
     """
         mark course block as completed
         
@@ -172,71 +194,79 @@ def complete_block(request):
         Returns:
             In Post : get user email, block_id, course id and mark block as completed
     """
-    # get block_id, course_id and user email 
-    course_id = request.POST.get("course_id")
-    user_email = request.POST.get("user_email")
-    block_id = request.POST.get("block_id")
-    message = {}
-    try:
-        user = User.objects.get(email=user_email)
-    except User.DoesNotExist:
-        user = None
 
-    # get block to mark complete 
-    block_usage_key = UsageKey.from_string(block_id)
-    course_key = CourseKey.from_string(course_id)
-    course = modulestore().get_course(course_key, depth=3)
-    field_data_cache = FieldDataCache.cache_for_block_descendents(course.id,user,course,depth=2)
-    block = get_block(user,request,block_usage_key,field_data_cache,)
+    def post(self,request):
+        # get block_id, course_id and user email 
+        course_id = request.POST.get("course_id")
+        user_email = request.POST.get("user_email")
+        block_id = request.POST.get("block_id")
+        message = {}
+        try:
+            user = User.objects.get(email=user_email)
+        except User.DoesNotExist:
+            return Response(
+                    {"error": "user not found"},
+                    status=status.HTTP_404_NOT_FOUND
+            )
 
-    if BlockCompletion.objects.filter(context_key=course_id, user=user, block_key=block_usage_key):
-        message = {"success": "block is already completed"}
+        # get block to mark complete 
+        block_usage_key = UsageKey.from_string(block_id)
+        course_key = CourseKey.from_string(course_id)
+        course = modulestore().get_course(course_key, depth=3)
+        field_data_cache = FieldDataCache.cache_for_block_descendents(course.id,user,course,depth=2)
+        block = get_block(user,request,block_usage_key,field_data_cache,)
 
-    # mark block as complete
-    if block_usage_key.block_type == 'chapter':
-        for subsection in block.get_children():
-            for unit in subsection.get_children():
-                for problem in unit.get_children():
-                    try:
+        if BlockCompletion.objects.filter(context_key=course_id, user=user, block_key=block_usage_key):
+            return Response(
+                    {"success": "block is already completed"},
+                    status=status.HTTP_200_OK
+            )
+
+        # mark block as complete
+        if block_usage_key.block_type == 'chapter':
+            for subsection in block.get_children():
+                for unit in subsection.get_children():
+                    for problem in unit.get_children():
                         BlockCompletion.objects.submit_completion(
                             user=user, 
                             block_key=problem.usage_key,
                             completion=1.0
                         )
-                        message = {"success": "block is completed successfully"}
-                    except BlockCompletion:
-                        message = {"error": "something went wrong try again"}
-    elif block_usage_key.block_type == 'sequential':
-        for unit in block.get_children():
-            for problem in unit.get_children():
-                try:
+                        return Response(
+                            {"success": "block is completed successfully"},
+                            status=status.HTTP_200_OK
+                        )
+        elif block_usage_key.block_type == 'sequential':
+            for unit in block.get_children():
+                for problem in unit.get_children():
                     BlockCompletion.objects.submit_completion(
                         user=user, 
                         block_key=problem.usage_key,
                         completion=1.0
                     )
-                    message = {"success": "block is completed successfully"}
-                except BlockCompletion:
-                    message = {"error": "something went wrong try again"}
-    elif block_usage_key.block_type == 'vertical':
-        for problem in block.get_children():
-            try:
+                    return Response(
+                        {"success": "block is completed successfully"},
+                        status=status.HTTP_200_OK
+                    )
+        elif block_usage_key.block_type == 'vertical':
+            for problem in block.get_children():
                 BlockCompletion.objects.submit_completion(
                     user=user, 
                     block_key=problem.usage_key,
                     completion=1.0
                 )
-                message = {"success": "block is completed successfully"}
-            except BlockCompletion:
-                message = {"error": "something went wrong try again"}
-    else :
-        message = {"error": "something went wrong try again"}
+                return Response(
+                    {"success": "block is completed successfully"},
+                    status=status.HTTP_200_OK
+                )
+        else :
+            return Response(
+                {"error": "something went wrong try again"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
 
-    return Response(message)
-
-@api_view(["POST"])
-def set_grade(request):
+class SetSubsectionGrade(APIView):
     """
         set grade in for subsection
         
@@ -249,32 +279,45 @@ def set_grade(request):
         Returns:
             In Post : get user email, block_id, course id, grade and update grade
     """
-    # get grade, user email, course id subsection id
-    user_email = request.POST.get('user_email')
-    course_id = request.POST.get('course_id')
-    grade = request.POST.get('grade')
-    subsection_id = request.POST.get('section_id')
-    max_value = 1
+    def post(self,request):
+        # get grade, user email, course id subsection id
+        user_email = request.POST.get('user_email')
+        course_id = request.POST.get('course_id')
+        grade = request.POST.get('grade')
+        subsection_id = request.POST.get('section_id')
+        max_value = 1
+        update_subsection_grade = False
 
-    # get course, user, and subsection block
-    course_key = CourseKey.from_string(course_id)
-    course = modulestore().get_course(course_key, depth=3)
-    user = User.objects.get(email=user_email)
-    field_data_cache = FieldDataCache.cache_for_block_descendents(course.id,user,course,depth=2)
-    subsetion_usage_key = UsageKey.from_string(subsection_id)
-    block = get_block(user,request,subsetion_usage_key,field_data_cache,)
+        # get course, user, and subsection block
+        course_key = CourseKey.from_string(course_id)
+        course = modulestore().get_course(course_key, depth=3)
+        user = User.objects.get(email=user_email)
+        field_data_cache = FieldDataCache.cache_for_block_descendents(course.id,user,course,depth=2)
+        subsetion_usage_key = UsageKey.from_string(subsection_id)
+        block = get_block(user,request,subsetion_usage_key,field_data_cache,)
 
-    grade_dict = {'value': grade, 'max_value': max_value, 'user_id': user.id}
+        grade_dict = {'value': grade, 'max_value': max_value, 'user_id': user.id}
 
-    # set grade for given subsection
-    for unit in block.get_children():
-        if int(grade) != 0:
-            score = (len(unit.get_children())/int(grade))
-            grade_dict = {'value': score, 'max_value': max_value, 'user_id': user.id}
+        # set grade for given subsection
+        for unit in block.get_children():
+            if int(grade) != 0:
+                score = (len(unit.get_children())/int(grade))
+                grade_dict = {'value': score, 'max_value': max_value, 'user_id': user.id}
+                update_subsection_grade =True
 
-        for problem in unit.get_children():
-            problem.runtime.publish(problem, 'grade', grade_dict)
+            for problem in unit.get_children():
+                problem.runtime.publish(problem, 'grade', grade_dict)
 
-    message = {"success": "grade reseted succesfully"}
-
-    return Response(message)
+        if update_subsection_grade:
+            message = {"success": "grade updated succesfully"}
+        elif not update_subsection_grade:
+            message = {"success": "grade reseted succesfully"}
+        else:
+            return Response(
+                {"error": "something went wrong "},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        return Response(
+                message,
+                status=status.HTTP_200_OK
+            )

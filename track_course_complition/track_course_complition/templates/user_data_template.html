@@ -29,6 +29,7 @@
                 </div>
                 <button type="submit" class="btn btn-primary">Submit</button>
                 <button type="button" id="random-data" class="btn btn-info">random data</button>
+                <button type="button" id="not-enrolled-user" class="btn btn-secondary">not enrolled user</button>
               </form>
         </div>
 
@@ -117,7 +118,13 @@
 
         $("#random-data").on('click', function () {
             $('#userEmailInput').val('edx@example.com')
-            $('#courseIdInput').val('course-v1:test_grade+TS110+2042_SR')
+            // $('#courseIdInput').val('course-v1:SS_106+DV610+2028_SD')
+            // $('#courseIdInput').val('course-v1:test_grade+TS110+2042_SR')
+            $('#courseIdInput').val('course-v1:TestUni+SG_21+SS_2027')
+        })
+
+        $("#not-enrolled-user").on('click', function (){
+            $('#userEmailInput').val('test1@example.com')
         })
 
         // showing user details in table
@@ -187,7 +194,6 @@
             $("#container-course-outline").removeClass("hide");
             $("#course_outline tbody").empty()
 
-            
             // <!-- section data row -->
             course_outline.forEach(section => {
                 $("#course_outline tbody").append(`
@@ -197,7 +203,6 @@
                             <td>${section.has_completed ? '<button class="btn btn-danger" disabled> completed </button>' : '<button data-block-id= ' +section.id+ ' class="block_complete btn btn-outline-primary ">complete</button>'}</td>
                         </tr>
                     `);
-
                 // <!-- sub-section data row -->
                 section.subsections.forEach(subsection => {
                     $("#course_outline tbody").append(`
@@ -248,20 +253,43 @@
                     course_grades = res.course_grades
                     show_user_details_table(user_details)
                     show_course_details_table(course_details)
-                    if (res.is_enrolled){
-                        show_course_outline(course_outline)
-                        show_course_grades(course_grades)
-                    }else{
+                    if (res.success){
+                        if (res.is_enrolled){
+                            show_course_outline(course_outline)
+                            show_course_grades(course_grades)
+                        }
+                    }else if(res.error){
+                        $("#container-course-outline").addClass("hide");
+                        $("#container-course-grade").addClass("hide");
                         $("#error_message").removeClass("hide")
-                        $('#error_message').append("<h4>user is not enrolled in this course</h4>")
-                        setTimeout(() => {
+                        $('#error_message').html("<h4>"+ res.error +"</h4>")
+                        setTimeout(() => {  
                             $('#error_message').addClass("hide")
                             $("#error_message").empty();
                         }, 5000);
                     }
                 },
-                error: function (e) {
-                    console.log(e)
+                error: function (res) {
+                    if(res.responseJSON.error){
+                        debugger
+                        if (!$("#container-user-details, #container-course-details").hasClass("hide")) {
+                            $("#container-user-details").addClass("hide");
+                            $("#container-course-details").addClass("hide");
+                        }
+                        if (!$("#container-course-outline,#container-course-grade").hasClass("hide")) {
+                            $("#container-course-outline").addClass("hide");
+                            $("#container-course-grade").addClass("hide");
+                        }
+                        $("#error_message").removeClass("hide")
+                        $('#error_message').html("<h4>"+ res.responseJSON.error +"</h4>")
+                        setTimeout(() => {  
+                            $('#error_message').addClass("hide")
+                            $("#error_message").empty();
+                        }, 5000);
+                    }
+                    else{
+                        console.log(res.responseJSON)
+                    }
                 }
             });
         } 
@@ -293,8 +321,20 @@
                     }
                     window.scrollTo({ top: 0, behavior: "smooth" });
                 },
-                error: function (e) {
-                    console.log(e)
+                error: function (res) {
+                    if(res.responseJSON.error){
+                        $("#container-course-outline").addClass("hide");
+                        $("#container-course-grade").addClass("hide");
+                        $("#error_message").removeClass("hide")
+                        $('#error_message').html("<h4>"+ res.responseJSON.error +"</h4>")
+                        setTimeout(() => {  
+                            $('#error_message').addClass("hide")
+                            $("#error_message").empty();
+                        }, 5000);
+                    }
+                    else{
+                        console.log(res.responseJSON)
+                    }
                 }
                 });
         }
@@ -323,7 +363,7 @@
                         get_course_details()
                     }else if (res.error){
                         $("#error_message").removeClass("hide")
-                        $('#error_message').append('<h4>'+ res.error +'</h4>')
+                        $('#error_message').html('<h4>'+ res.error +'</h4>')
                         setTimeout(() => {
                             $('#error_message').addClass("hide")
                             $("#error_message").empty();
@@ -332,8 +372,20 @@
                     window.scrollTo({ top: 0, behavior: "smooth" });
 
                 },
-                error: function (e) {
-                    console.log(e)
+                error: function (res) {
+                    if(res.responseJSON.error){
+                        $("#container-course-outline").addClass("hide");
+                        $("#container-course-grade").addClass("hide");
+                        $("#error_message").removeClass("hide")
+                        $('#error_message').html("<h4>"+ res.responseJSON.error +"</h4>")
+                        setTimeout(() => {  
+                            $('#error_message').addClass("hide")
+                            $("#error_message").empty();
+                        }, 5000);
+                    }
+                    else{
+                        console.log(res.responseJSON)
+                    }
                 }
             });
         }
