@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Bootstrap demo</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+    <style>
+        .hide{
+            display: none;
+        }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+        <h1 class="text-center ">Track Course Complition</h1>
+
+        <!-- form container -->
+        <div class="form-container container">
+            <form method="post" id="get_details">
+                {% csrf_token %}
+                <div class="mb-3">
+                  <label for="userEmailInput" class="form-label">user email</label>
+                  <input type="text" class="form-control" id="userEmailInput">
+                </div>
+                <div class="mb-3">
+                  <label for="courseIdInput" class="form-label">course id</label>
+                  <input type="text" class="form-control" id="courseIdInput">
+                </div>
+                <button type="submit" class="btn btn-primary">Submit</button>
+                <button type="button" id="random-data" class="btn btn-info">random data</button>
+              </form>
+        </div>
+
+        <!-- error message -->
+        <div id="error_message" class="alert alert-danger m-4 text-center" role="alert">
+            
+        </div>
+        <!--  success message -->
+        <div id="success_message" class="alert alert-success m-4 text-center" role="alert">
+        </div>
+        
+        <!-- user details container -->
+        <div id="container-user-details" class="container">
+            <h3 class="text-center">User Details</h3>
+            <div class="container">
+                <table class="table table-striped table-light" id="user-details">
+                    <tbody class="table-group-divider">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- course details container -->
+        <div id="container-course-details" class="container">
+            <h3 class="text-center">Course Details</h3>
+            <div class="container">
+                <table class="table table-striped table-danger" id="course-details">
+                    <tbody class="table-group-divider">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+         <!-- Course Outline details container -->
+        <div id="container-course-outline" class="container">
+            <h3 class="text-center">Course Outline</h3>
+         <div class="container">
+            <table class="table" id="course_outline">
+                <thead>
+                    <tr>
+                        <th scope="col" colspan="3">name</th>
+                        <th scope="col">section id</th>
+                        <th scope="col">is completed by user (grade)</th>
+                    </tr>
+                </thead>
+                <tbody class="table-group-divider">
+
+                </tbody>
+            </table>
+        </div>
+        </div>
+
+        <!-- Course grade details container -->
+        <div id="container-course-grade" class="container">
+            <h3 class="text-center">Course grades</h3>
+         <div class="container">
+            <table class="table table-info" id="course_grade">
+                <thead>
+                    <tr>
+                        <th scope="col">subsection name</th>
+                        <th scope="col">earned_grade</th>
+                        <th scope="col">possible_grade</th>
+                        <th scope="col">set grade</th>
+                    </tr>
+                </thead>
+                <tbody class="table-group-divider">
+                </tbody>
+            </table>
+        </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+        <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.8/dist/umd/popper.min.js" integrity="sha384-I7E8VVD/ismYTF4hNIPjVp/Zjvgyol6VFvRkX/vR+Vc4jQkC+hVqc2pM8ODewa9r" crossorigin="anonymous"></script>
+        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.min.js" integrity="sha384-0pUGZvbkm6XF6gxjEnlmuGrJXVbNuzT9qBBavbLwCsOGabYfZo0T0to5eqruptLy" crossorigin="anonymous"></script>
+        <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+  </body>
+  <script>
+    $(document).ready(function () {
+
+        $("#container-user-details").addClass("hide");
+        $("#container-course-details").addClass("hide");
+        $("#container-course-outline").addClass("hide");
+        $("#container-course-grade").addClass("hide");
+        $("#error_message").addClass("hide")
+        $("#success_message").addClass("hide")
+
+        $("#random-data").on('click', function () {
+            $('#userEmailInput').val('edx@example.com')
+            $('#courseIdInput').val('course-v1:test_grade+TS110+2042_SR')
+        })
+
+        // showing user details in table
+        function show_user_details_table(data){
+            $("#container-user-details").removeClass("hide")
+
+            $("#user-details tbody").html(`
+                        <tr>
+                            <th class="col-6">username</th>
+                            <td class="col-6">`+ data.username +`</td>
+                        </tr>
+                         <tr>
+                            <th>email</th>
+                            <td>`+data.email +`</td>
+                        </tr>
+                        <tr>
+                            <th>first name</th>
+                            <td>`+(data.first_name ? data.first_name : '' ) +`</td>
+                        </tr>
+                        <tr>
+                            <th>last name</th>
+                            <td>`+(data.last_name ? data.last_name : '') +`</td>
+                        </tr>
+                       `)
+
+        }
+        
+        // showing course details in table
+        function show_course_details_table(data){
+            $("#container-course-details").removeClass("hide")
+
+            $("#course-details tbody").html(`
+                        <tr>
+                            <th class="col-6">course name</th>
+                            <td class="col-6" >`+data.name+`</td>
+                        </tr>
+                        <tr>
+                            <th>start date</th>
+                            <td>`+data.start+`</td>
+                        </tr>
+                        <tr>
+                            <th>end date</th>
+                            <td>`+data.end+`</td>
+                        </tr>
+                       `)
+        }
+
+        // showing course subsection grade in table
+        function show_course_grades(course_grades){
+            $("#container-course-grade").removeClass("hide");
+            $("#course_grade tbody").empty()
+            
+            course_grades.forEach(subsection => {
+                $('#course_grade tbody').append(`
+                    <tr>
+                        <td>${subsection.sub_section_name}</td>
+                        ${subsection.is_graded ? '<td>'+ subsection.earned_grade +'</td> <td>'+ subsection.possible_grade +'</td>' : "<td clospan='2'>sub section not graded</td> "}
+                        ${subsection.earned_grade != subsection.possible_grade  ? '<td><button data-subsection-id = '+ subsection.id +' data-earned-grade = '+ subsection.possible_grade +' id="setGrade" class="btn btn-outline-primary ">complete</button></td>' : (subsection.possible_grade ==0 ? '<td></td>': '<td><button data-subsection-id = '+ subsection.id +' data-earned-grade = 0 id="setGrade" class="btn btn-outline-danger ">reset</button></td>')}
+                        
+                    </tr>
+                `)
+            })
+        }
+
+        // showing course outline in table
+        function show_course_outline(course_outline){
+            $("#container-course-outline").removeClass("hide");
+            $("#course_outline tbody").empty()
+
+            
+            // <!-- section data row -->
+            course_outline.forEach(section => {
+                $("#course_outline tbody").append(`
+                        <tr class="table-primary">
+                            <td colspan="3" >${section.name}(${section.subsection_count})</td>
+                            <td>${section.id}</td>
+                            <td>${section.has_completed ? '<button class="btn btn-danger" disabled> completed </button>' : '<button data-block-id= ' +section.id+ ' class="block_complete btn btn-outline-primary ">complete</button>'}</td>
+                        </tr>
+                    `);
+
+                // <!-- sub-section data row -->
+                section.subsections.forEach(subsection => {
+                    $("#course_outline tbody").append(`
+                        <tr class="table-info">
+                            <td></td>
+                            <td colspan="2" >${subsection.name}(${subsection.unit_count})</td>
+                            <td>${subsection.id}</td>
+                            <td>${subsection.has_completed ? '<button class="btn btn-danger" disabled> completed </button> ' : '<button data-block-id= ' +subsection.id+ ' class="block_complete btn btn-outline-primary">complete</button>'}</td>
+                        </tr>
+                    `);
+
+                    //<!-- unit data row -->
+                    subsection.units.forEach(unit => {
+                        $("#course_outline tbody").append(`
+                            <tr class="table-warning">
+                                <td></td>
+                                <td></td>
+                                <td>${unit.name}</td>
+                                <td>${unit.id}</td>
+                                <td>${unit.has_completed ? '<button class="btn btn-danger" disabled> completed </button>' : '<button data-block-id= ' +unit.id+ ' class="block_complete btn btn-outline-primary">complete</button>'}</td>
+                            </tr>
+                        `);
+
+                    }); // adding unit data in table
+
+                }); // adding subsection data in table
+
+            }); // adding section data in table
+
+        }
+
+        // ajax call for user details, course outline, course grade 
+        function get_course_details(){
+            $.ajax({
+                type: 'POST',
+                url:$(this).attr("action"),
+                headers: {
+                    "x-csrftoken": $("[name=csrfmiddlewaretoken]").val()
+                },
+                data: { 
+                    course_id: $('#courseIdInput').val(),
+                    user_email: $('#userEmailInput').val() 
+                },
+                success: function (res) {
+                    user_details= res.user_details
+                    course_details= res.course_details
+                    course_outline= res.course_outline
+                    course_grades = res.course_grades
+                    show_user_details_table(user_details)
+                    show_course_details_table(course_details)
+                    if (res.is_enrolled){
+                        show_course_outline(course_outline)
+                        show_course_grades(course_grades)
+                    }else{
+                        $("#error_message").removeClass("hide")
+                        $('#error_message').append("<h4>user is not enrolled in this course</h4>")
+                        setTimeout(() => {
+                            $('#error_message').addClass("hide")
+                            $("#error_message").empty();
+                        }, 5000);
+                    }
+                },
+                error: function (e) {
+                    console.log(e)
+                }
+            });
+        } 
+
+        // ajax call for orverride subsection grade 
+        function overrideSubsectionGrade(grade,section_id){
+            $.ajax({
+                type: 'POST',
+                url: "http://local.openedx.io:8000/track_course/set_grade",
+                headers: {
+                    "x-csrftoken": $("[name=csrfmiddlewaretoken]").val()
+                },
+                data: { 
+                    course_id: $('#courseIdInput').val(),
+                    user_email: $('#userEmailInput').val(),
+                    grade:grade,
+                    section_id: section_id
+                },
+                success: function (res) {
+                    if (res.success){
+                        $("#success_message").removeClass("hide")
+                        $("#success_message").append('<h4>'+ res.success +'</h4>')
+                        setTimeout(() => {
+                            $("#success_message").empty();
+                            $("#success_message").addClass("hide");
+                        }, 5000);
+                        
+                        get_course_details()
+                    }
+                    window.scrollTo({ top: 0, behavior: "smooth" });
+                },
+                error: function (e) {
+                    console.log(e)
+                }
+                });
+        }
+
+        // ajax call to mark course block as complete
+        function markBlockComplete(block_id){
+            $.ajax({
+                type: 'POST',
+                url: "http://local.openedx.io:8000/track_course/complete_block",
+                headers: {
+                    "x-csrftoken": $("[name=csrfmiddlewaretoken]").val()
+                },
+                data: { 
+                    course_id: $('#courseIdInput').val(),
+                    user_email: $('#userEmailInput').val(),
+                    block_id:block_id
+                },
+                success: function (res) {
+                    if (res.success){
+                        $("#success_message").removeClass("hide")
+                        $("#success_message").append('<h4>'+ res.success +'</h4>')
+                        setTimeout(() => {
+                            $("#success_message").empty();
+                            $("#success_message").addClass("hide");
+                        }, 5000);
+                        get_course_details()
+                    }else if (res.error){
+                        $("#error_message").removeClass("hide")
+                        $('#error_message').append('<h4>'+ res.error +'</h4>')
+                        setTimeout(() => {
+                            $('#error_message').addClass("hide")
+                            $("#error_message").empty();
+                        }, 5000);
+                    }
+                    window.scrollTo({ top: 0, behavior: "smooth" });
+
+                },
+                error: function (e) {
+                    console.log(e)
+                }
+            });
+        }
+
+        // event submit form  
+        $("#get_details").on("submit", function (event) {
+            event.preventDefault();
+            get_course_details()
+            
+        });
+        
+        // event mark block as complete
+        $(document).on("click", ".block_complete" ,function (event) {
+            let block_id = $(this).data("block-id")
+            event.preventDefault();
+            markBlockComplete(block_id);
+        });
+
+        // event override subsection grade
+        $(document).on("click", "#setGrade" ,function (event) {
+            let subsection_id= $(this).data("subsection-id")
+            let grade= $(this).data("earned-grade")
+            if (confirm("Are you sure set grade to  "+ grade +"  this subsection") == true) {
+                overrideSubsectionGrade(grade,subsection_id)
+            } else {
+                alert("mission aborted" )
+            }
+        });
+
+    }); // documents ready function
+  </script>
+</html>

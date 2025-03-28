@@ -1,0 +1,14 @@
+setup.py
+track_course_complition/__init__.py
+track_course_complition/admin.py
+track_course_complition/apps.py
+track_course_complition/models.py
+track_course_complition/tests.py
+track_course_complition/urls.py
+track_course_complition/views.py
+track_course_complition.egg-info/PKG-INFO
+track_course_complition.egg-info/SOURCES.txt
+track_course_complition.egg-info/dependency_links.txt
+track_course_complition.egg-info/entry_points.txt
+track_course_complition.egg-info/top_level.txt
+track_course_complition/migrations/__init__.py
